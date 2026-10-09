@@ -1,0 +1,39 @@
+name: Build and deploy to kind
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CLUSTER_NAME: aula-11
+  IMAGE_NAME: nginx-aula-11
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure kind cluster exists
+        run: |
+          if ! kind get clusters | grep -qx "$CLUSTER_NAME"; then
+            terraform -chdir=iac init
+            terraform -chdir=iac apply -auto-approve
+          fi
+
+      - name: Build image
+        run: docker build -t "$IMAGE_NAME:${GITHUB_SHA::7}" app
+
+      - name: Load image into kind
+        run: kind load docker-image "$IMAGE_NAME:${GITHUB_SHA::7}" --name "$CLUSTER_NAME"
+
+      - name: Apply manifests
+        run: |
+          kubectl --context "kind-$CLUSTER_NAME" apply -f manifestos/
+          kubectl --context "kind-$CLUSTER_NAME" set image deploy/nginx-aula-11 \
+            nginx="$IMAGE_NAME:${GITHUB_SHA::7}"
+          kubectl --context "kind-$CLUSTER_NAME" rollout status deploy/nginx-aula-11 --timeout=120s
+
+      - name: Smoke test
+        run: curl -fsS http://localhost:81 | grep -q "Aula 11"
