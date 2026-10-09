@@ -1,0 +1,5 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.Zone.Identifier
+*:Zone.Identifier
